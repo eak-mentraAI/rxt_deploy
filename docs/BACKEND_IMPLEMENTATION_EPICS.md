@@ -1,6 +1,6 @@
 # RXT Deploy Backend Implementation Epics
 
-**Version:** 1.0
+**Version:** 2.0 (Revised)
 **Last Updated:** October 21, 2025
 **Status:** Planning
 **Aligned With:** PRD v2.0, microservice_arch.md, SPOT_shim.md
@@ -11,6 +11,14 @@
 
 This document tracks the implementation of the RXT Deploy backend platform. Each epic represents a major body of work that delivers a complete, deployable capability. Epics are organized by implementation phase and dependency order.
 
+**Version 2.0 Updates:**
+- Enforced adapter contract compliance with conformance tests
+- Explicit event schema governance as blocking requirement
+- Tighter MVP path focusing on SPOT first (8-10 weeks to working deploy)
+- End-to-end idempotency and exactly-once semantics
+- Multi-tenant isolation test requirements
+- Operational readiness Go/No-Go gates per phase
+
 **Progress Tracking:**
 - ✅ Complete
 - 🔄 In Progress
@@ -20,50 +28,79 @@ This document tracks the implementation of the RXT Deploy backend platform. Each
 
 ---
 
-## Phase 1: Foundation & Core Platform (Months 1-3)
+## Revised MVP Strategy
+
+**Core Principle:** Get to "hello world deploy" on RXT SPOT in 8-10 weeks by:
+1. Scoping out Build Service initially (use GitHub Actions for artifacts)
+2. Focus on Orchestrator + SPOT Adapter + SPOT Networking
+3. Minimal but complete: Edge/API, Identity, Registry, Webhooks (minimal), Secrets, OPA-lite, Audit
+
+**SDDC Flex Adapters** are built in parallel or deferred to Phase 3.
+
+---
+
+## Phase 1: Foundation & Core Platform (Month 1: Weeks 1-4)
 
 ### Epic 1.1: Infrastructure & DevOps Setup ⬜
 
 **Goal:** Establish development, staging, and production environments with CI/CD pipelines.
 
 **Acceptance Criteria:**
-- [ ] Provision Kubernetes clusters for control plane services
-- [ ] Set up container registry (Harbor/ECR)
-- [ ] Configure GitHub Actions CI/CD pipelines
-- [ ] Establish Terraform IaC repository
-- [ ] Deploy monitoring stack (Prometheus, Grafana)
-- [ ] Set up centralized logging (ELK/Loki)
-- [ ] Configure secrets management (Vault/AWS Secrets Manager)
-- [ ] Establish database infrastructure (PostgreSQL primary + replicas)
-- [ ] Deploy Redis cluster for caching
-- [ ] Set up object storage (MinIO/S3)
-- [ ] Configure VPN/network access to SDDC Flex and RXT SPOT
+- [ ] Provision Kubernetes clusters for control plane services (dev, staging, prod)
+- [ ] Set up container registry (Harbor/ECR) with vulnerability scanning
+- [ ] Configure GitHub Actions CI/CD pipelines with multi-stage (build → test → deploy)
+- [ ] Establish Terraform IaC repository with state backend (S3+DynamoDB or Terraform Cloud)
+- [ ] Deploy monitoring stack (Prometheus, Grafana) with golden dashboards per service
+- [ ] Set up centralized logging (ELK/Loki) with log retention policies
+- [ ] Configure secrets management (Vault/AWS Secrets Manager) with per-tenant namespaces
+- [ ] Establish database infrastructure (PostgreSQL primary + 2 replicas) with automated backups
+- [ ] Deploy Redis cluster (3 nodes) for caching and idempotency storage
+- [ ] Set up object storage (MinIO/S3) for artifacts, Rego bundles, WORM audit exports
+- [ ] Configure VPN/network access to RXT SPOT (defer SDDC Flex for MVP)
+- [ ] **NEW:** Create synthetic probe infrastructure for continuous health checks
+- [ ] **NEW:** Establish on-call rotation and runbook repository
 
 **Dependencies:** None
 **Team:** DevOps, Platform Engineering
 **Estimated Effort:** 3-4 weeks
 
+**Go/No-Go Gate:**
+- [ ] All control plane services deployed and healthy
+- [ ] CI/CD pipeline successfully deploys test service
+- [ ] Monitoring dashboards showing metrics from all infrastructure components
+- [ ] Runbooks documented for infrastructure recovery scenarios
+
 ---
 
 ### Epic 1.2: Event Bus & Messaging Infrastructure ⬜
 
-**Goal:** Deploy and configure event-driven messaging backbone (NATS/RabbitMQ).
+**Goal:** Deploy and configure event-driven messaging backbone (NATS/RabbitMQ) with schema governance.
 
 **Acceptance Criteria:**
-- [ ] Deploy NATS/RabbitMQ cluster with HA
-- [ ] Define topic/queue naming conventions
-- [ ] Implement dead-letter queue (DLQ) handling
-- [ ] Create event schema registry
-- [ ] Build event publishing library (TypeScript/Go)
-- [ ] Build event consumption library with retry logic
-- [ ] Implement event replay capability
-- [ ] Set up event monitoring and alerting
-- [ ] Document event-first contracts (cmd.*, evt.*)
-- [ ] Create event bus testing utilities
+- [ ] Deploy NATS/RabbitMQ cluster with HA (3 nodes minimum)
+- [ ] Define topic/queue naming conventions (cmd.*, evt.*, per-service routing)
+- [ ] Implement dead-letter queue (DLQ) handling with retry backoff and max retries
+- [ ] **NEW:** Create AsyncAPI schema registry with versioned event definitions
+- [ ] **NEW:** Implement AsyncAPI validation in CI - producer builds fail on incompatible schema changes
+- [ ] **NEW:** All events require `idempotencyKey`, `causationId`, `correlationId` fields
+- [ ] Build event publishing library (TypeScript/Go) with automatic schema validation
+- [ ] Build event consumption library with retry logic, DLQ routing, and deduplication
+- [ ] Implement event replay capability from offset/timestamp
+- [ ] Set up event monitoring (lag, DLQ size, throughput) and alerting
+- [ ] **NEW:** Create sample payload fixtures for all event types
+- [ ] Document event-first contracts (cmd.*, evt.*) in AsyncAPI format
+- [ ] Create event bus testing utilities (local fake bus, contract test harness)
+- [ ] **NEW:** Implement idempotency storage in Redis (key: idempotencyKey, TTL: 24h)
 
 **Dependencies:** Epic 1.1
 **Team:** Backend, Platform Engineering
 **Estimated Effort:** 2-3 weeks
+
+**Go/No-Go Gate:**
+- [ ] Event schema registry operational with backward-compat checks
+- [ ] Sample event published and consumed with deduplication verified
+- [ ] DLQ tested with failed message routing
+- [ ] Event replay verified from historical offset
 
 ---
 
@@ -72,931 +109,698 @@ This document tracks the implementation of the RXT Deploy backend platform. Each
 **Goal:** Build authentication, authorization, and multi-tenancy foundation.
 
 **Acceptance Criteria:**
-- [ ] Design database schema (tenants, orgs, users, roles, permissions)
-- [ ] Implement JWT token minting and verification
-- [ ] Build SSO integration (SAML/OIDC)
-- [ ] Implement RBAC policy engine
+- [ ] Design database schema (tenants, orgs, users, roles, permissions) with RLS policies
+- [ ] Implement JWT token minting and verification with short TTL (15 min access, 7 day refresh)
+- [ ] **NEW:** Implement service-to-service mTLS (SPIFFE or mutual TLS) across control plane
+- [ ] Build SSO integration (SAML/OIDC) - optional for MVP, defer if needed
+- [ ] Implement RBAC policy engine with default-deny
 - [ ] Create API endpoints: `POST /orgs`, `POST /users`, `POST /invites`
-- [ ] Implement Row-Level Security (RLS) in PostgreSQL
-- [ ] Build middleware for request authentication
-- [ ] Implement API key management for service-to-service auth
-- [ ] Create audit logging for access changes
+- [ ] **NEW:** Implement Row-Level Security (RLS) toggle per table with default deny policies
+- [ ] **NEW:** RLS optional for MVP but schema must support it
+- [ ] Build middleware for request authentication with token refresh
+- [ ] Implement API key management for service-to-service auth (rotate keys every 90 days)
+- [ ] Create audit logging for all access changes (user created, role changed, etc.)
 - [ ] Emit `evt.access.changed` events
+- [ ] **NEW:** Write multi-tenant chaos tests: parallel operations across tenants, cross-tenant access attempts must fail
 - [ ] Write integration tests with multiple tenants
-- [ ] Document API contracts and RBAC model
+- [ ] Document API contracts (OpenAPI) and RBAC model
 
 **Dependencies:** Epic 1.1, Epic 1.2
 **Team:** Backend, Security
-**Estimated Effort:** 4-5 weeks
+**Estimated Effort:** 3-4 weeks (trimmed from 4-5 by deferring SSO for MVP)
+
+**Go/No-Go Gate:**
+- [ ] Multi-tenant isolation verified via chaos tests
+- [ ] JWT auth flow working with refresh tokens
+- [ ] RBAC denies unauthorized access attempts
+- [ ] Audit log capturing all access changes
 
 ---
 
 ### Epic 1.4: Edge/API Gateway ⬜
 
-**Goal:** Build unified API gateway with routing, rate limiting, and request/response translation.
+**Goal:** Build unified API gateway with routing, rate limiting, idempotency, and request/response translation.
 
 **Acceptance Criteria:**
-- [ ] Deploy Kong/Tyk/custom gateway
-- [ ] Implement request routing to backend services
-- [ ] Configure rate limiting per tenant/API key
-- [ ] Implement idempotency key handling
-- [ ] Build request validation middleware
-- [ ] Implement CORS and security headers
-- [ ] Create health check endpoints
-- [ ] Set up API versioning strategy
-- [ ] Implement request/response logging
-- [ ] Build event bridge (HTTP → event bus)
-- [ ] Configure TLS termination
-- [ ] Create API documentation (OpenAPI/Swagger)
-- [ ] Implement circuit breaker patterns
-- [ ] Write load tests (10k req/sec target)
+- [ ] Deploy Kong/Tyk/custom gateway with 3+ replicas
+- [ ] Implement request routing to backend services with health checks
+- [ ] Configure rate limiting per tenant/API key (e.g., 1000 req/min)
+- [ ] **NEW:** Implement idempotency key handling - propagate from edge → orchestrator → adapters
+- [ ] **NEW:** Store idempotency keys in Redis (TTL: 24h) with response caching
+- [ ] Build request validation middleware (schema validation, required headers)
+- [ ] Implement CORS and security headers (CSP, HSTS, X-Frame-Options)
+- [ ] Create health check endpoints (`/health`, `/ready`)
+- [ ] Set up API versioning strategy (v1, v2 path prefixes)
+- [ ] Implement request/response logging with correlation IDs
+- [ ] Build event bridge (HTTP → event bus) for async operations
+- [ ] Configure TLS termination with automated cert renewal
+- [ ] **NEW:** Create OpenAPI documentation with examples
+- [ ] Implement circuit breaker patterns (fail fast after 5 consecutive errors)
+- [ ] **NEW:** Write realistic SLO tests: p95 < 250ms under 1k RPS, error budget 0.1%, soak test with production-like traffic replay
 
 **Dependencies:** Epic 1.2, Epic 1.3
 **Team:** Backend
 **Estimated Effort:** 3-4 weeks
+
+**Go/No-Go Gate:**
+- [ ] Load test achieving p95 < 250ms at 1k RPS
+- [ ] Idempotency verified: duplicate requests return cached response
+- [ ] Circuit breaker activates under simulated downstream failure
+- [ ] OpenAPI docs published and validated
 
 ---
 
 ### Epic 1.5: Project Registry Service ⬜
 
-**Goal:** Build source of truth for projects, environments, and deployment manifests.
+**Goal:** Build source of truth for projects, environments, and deployment manifests with versioning and immutability.
 
 **Acceptance Criteria:**
-- [ ] Design database schema (projects, environments, manifests, repos)
-- [ ] Implement project CRUD operations
-- [ ] Implement environment CRUD operations
-- [ ] Build manifest storage and versioning
+- [ ] Design database schema (projects, environments, manifests, repos) with tenant isolation
+- [ ] Implement project CRUD operations with RBAC checks
+- [ ] Implement environment CRUD operations with RBAC checks
+- [ ] **NEW:** Build manifest storage with content-addressable hashing (SHA-256)
+- [ ] **NEW:** Manifest diffing: deployments always reference a content digest (immutable)
+- [ ] **NEW:** Schema versioning for deploy.yaml - reject incompatible changes with clear error messages
 - [ ] Create API endpoints: `POST /projects`, `PATCH /environments/:id`, `GET /manifests/:id`
-- [ ] Implement manifest validation (deploy.yaml schema)
-- [ ] Build Git repository metadata storage
-- [ ] Emit `evt.project.created/updated` events
-- [ ] Consume `evt.repo.verified` events
-- [ ] Implement project deletion with cascade
-- [ ] Create project templates library
-- [ ] Write integration tests
-- [ ] Document API contracts
+- [ ] Implement manifest validation (deploy.yaml JSON schema)
+- [ ] Build Git repository metadata storage (repo URL, branch, commit SHA)
+- [ ] Emit `evt.project.created/updated` events with before/after diffs
+- [ ] Consume `evt.repo.verified` events from VCS service
+- [ ] Implement project deletion with cascade (soft delete with 30-day retention)
+- [ ] Create project templates library (defer detailed templates to Phase 3)
+- [ ] Write integration tests with manifest versioning scenarios
+- [ ] Document API contracts (OpenAPI)
 
 **Dependencies:** Epic 1.2, Epic 1.3
 **Team:** Backend
 **Estimated Effort:** 3-4 weeks
 
+**Go/No-Go Gate:**
+- [ ] Manifest content-addressable storage verified (same content = same digest)
+- [ ] deploy.yaml schema validation rejecting invalid manifests
+- [ ] Project deletion cascade tested with no orphaned resources
+- [ ] API docs complete with manifest format examples
+
 ---
 
-### Epic 1.6: Webhook & VCS Integration Service ⬜
+### Epic 1.6: Webhook & VCS Integration Service (Minimal for MVP) ⬜
 
-**Goal:** Handle Git webhooks from GitHub/GitLab and emit commit events.
+**Goal:** Handle Git webhooks from GitHub and emit commit events (GitLab deferred).
 
 **Acceptance Criteria:**
-- [ ] Implement webhook receivers for GitHub/GitLab
-- [ ] Build webhook signature verification
-- [ ] Implement event deduplication (Redis)
-- [ ] Parse commit metadata and PR details
-- [ ] Emit `evt.commit.pushed`, `evt.pr.opened` events
-- [ ] Store webhook history in PostgreSQL
-- [ ] Build webhook retry mechanism
-- [ ] Implement branch filtering (only deploy main/prod)
-- [ ] Create API: `POST /webhooks/github`, `POST /webhooks/gitlab`
-- [ ] Handle webhook payload variations (push, PR, tag)
-- [ ] Build admin UI for webhook debugging
-- [ ] Write integration tests with mock Git events
-- [ ] Document webhook setup guide
+- [ ] Implement webhook receiver for GitHub only (GitLab in Phase 3)
+- [ ] Build webhook signature verification (HMAC-SHA256)
+- [ ] Implement event deduplication using Redis (key: delivery_id, TTL: 1h)
+- [ ] Parse commit metadata (SHA, author, message, timestamp)
+- [ ] Emit `evt.commit.pushed` events only (defer PR events for MVP)
+- [ ] Store webhook history in PostgreSQL (last 1000 events per project)
+- [ ] Build webhook retry mechanism (3 retries with exponential backoff)
+- [ ] Implement branch filtering (only deploy from main/master/production branches)
+- [ ] Create API: `POST /webhooks/github`
+- [ ] Write integration tests with mock GitHub webhooks
+- [ ] Document webhook setup guide with GitHub screenshot walkthrough
 
 **Dependencies:** Epic 1.2, Epic 1.5
 **Team:** Backend
-**Estimated Effort:** 2-3 weeks
+**Estimated Effort:** 1-2 weeks (trimmed by focusing on GitHub only)
+
+**Go/No-Go Gate:**
+- [ ] GitHub webhook received and `evt.commit.pushed` emitted
+- [ ] Signature verification blocks invalid webhooks
+- [ ] Deduplication prevents duplicate events from retries
+- [ ] Branch filtering working correctly
 
 ---
 
 ### Epic 1.7: Secrets Service ⬜
 
-**Goal:** Secure storage, rotation, and distribution of secrets to applications.
+**Goal:** Secure storage, rotation, and short-lived credential distribution.
 
 **Acceptance Criteria:**
-- [ ] Integrate with Vault/AWS Secrets Manager
-- [ ] Implement per-tenant namespacing in Vault
+- [ ] Integrate with Vault/AWS Secrets Manager with HA configuration
+- [ ] Implement per-tenant namespacing in Vault (path: `rxt-deploy/{tenantId}/secrets/`)
 - [ ] Build secret CRUD API: `POST /secrets`, `GET /secrets/:id`, `DELETE /secrets/:id`
 - [ ] Implement secret rotation API: `POST /secrets/:id/rotate`
-- [ ] Build short-lived credential issuance for runners
-- [ ] Create secret injection into deployments (env vars)
+- [ ] **NEW:** Build short-lived kubeconfig issuance for SPOT deployments (TTL: 1h)
+- [ ] **NEW:** Vault broker returns short-lived credentials only (no long-lived tokens stored)
+- [ ] Create secret injection into deployments (environment variables, mounted files)
 - [ ] Emit `evt.secret.rotated` events
-- [ ] Implement secret access audit logging
-- [ ] Build secret versioning and rollback
-- [ ] Create CLI commands for secret management
-- [ ] Implement secret encryption at rest (AES-256)
-- [ ] Write security tests (unauthorized access, encryption)
+- [ ] Implement secret access audit logging (who accessed which secret when)
+- [ ] Build secret versioning (keep last 5 versions)
+- [ ] Implement secret encryption at rest (AES-256-GCM)
+- [ ] Write security tests (unauthorized access blocked, encryption verified)
 - [ ] Document secret management best practices
 
 **Dependencies:** Epic 1.1, Epic 1.3
 **Team:** Backend, Security
 **Estimated Effort:** 3-4 weeks
 
+**Go/No-Go Gate:**
+- [ ] Short-lived kubeconfig issued and expires correctly
+- [ ] Secret access audit log capturing all reads
+- [ ] Unauthorized cross-tenant access blocked
+- [ ] Secret rotation tested and events emitted
+
 ---
 
 ### Epic 1.8: Audit Log Service ⬜
 
-**Goal:** Immutable append-only audit trail for all mutating operations.
+**Goal:** Immutable append-only audit trail for all mutating operations with integrity verification.
 
 **Acceptance Criteria:**
-- [ ] Design audit log schema (actor, action, object, timestamp, metadata)
-- [ ] Build event consumer that logs all `evt.*` events
-- [ ] Implement write-only API (no updates/deletes)
-- [ ] Create query API: `GET /audit?object=...&actor=...`
-- [ ] Store logs in PostgreSQL with partitioning
-- [ ] Export old logs to object storage (WORM)
-- [ ] Implement log retention policies
-- [ ] Build compliance report generation
-- [ ] Create audit log search UI
-- [ ] Implement log integrity verification (hash chains)
-- [ ] Set up log forwarding to SIEM
-- [ ] Write compliance tests
-- [ ] Document audit log schema and queries
+- [ ] Design audit log schema (actor, action, object, timestamp, metadata, hash)
+- [ ] Build event consumer that logs all `evt.*` events via event bus tap
+- [ ] Implement write-only API (no updates/deletes - append only)
+- [ ] Create query API: `GET /audit?object=...&actor=...&action=...&timeRange=...`
+- [ ] Store logs in PostgreSQL with time-based partitioning (monthly)
+- [ ] Export old logs (>90 days) to object storage (WORM mode)
+- [ ] Implement log retention policies (7 years for compliance)
+- [ ] **NEW:** Implement log integrity verification via hash chains (each record hashes previous record)
+- [ ] Build compliance report generation (CSV/PDF export)
+- [ ] Create audit log search UI (defer to Phase 3, API-only for MVP)
+- [ ] Set up log forwarding to SIEM (optional for MVP)
+- [ ] Write compliance tests (verify all mutations logged)
+- [ ] Document audit log schema and query patterns
 
 **Dependencies:** Epic 1.2
 **Team:** Backend, Security
 **Estimated Effort:** 2-3 weeks
 
+**Go/No-Go Gate:**
+- [ ] All mutating events captured in audit log
+- [ ] Hash chain integrity verified (tampering detected)
+- [ ] Query API returns filtered results correctly
+- [ ] WORM export tested for old logs
+
 ---
 
-## Phase 2: Platform Abstraction & Deployment Core (Months 2-4)
+## Phase 2: Platform Abstraction & Deployment Core (Month 2: Weeks 5-8)
 
-### Epic 2.1: Platform Abstraction Layer ⬜
+### Epic 2.1: Provider Router & Contracts (formerly "Platform Abstraction Layer") ⬜
 
-**Goal:** Route deployment requests to correct platform adapter (SDDC Flex vs RXT SPOT).
+**Goal:** Define and enforce modular provider interface with conformance tests and capability discovery.
 
 **Acceptance Criteria:**
-- [ ] Define `IComputePlatform` interface in TypeScript/Go
-- [ ] Implement platform selection logic (auto, vm, container)
-- [ ] Build manifest translation orchestration
+- [ ] **NEW:** Create `@rxt/platform-sdk` package (TypeScript/Go) with:
+  - [ ] `IComputePlatform` interface (provisionEnvironment, deployApplication, scaleResources, getStatus, destroyEnvironment)
+  - [ ] Types: `ComputePlatform`, `ProvisionRequest`, `NetworkSpec`, `DeploymentOutcome`
+  - [ ] AsyncAPI contracts for `cmd.*` and `evt.*` topics
+  - [ ] **Contract test harness** with golden test fixtures
+  - [ ] Local fake event bus for testing
+- [ ] **NEW:** Define `provider.yaml` schema (name, version, capabilities, constraints)
+- [ ] **NEW:** Build provider conformance suite: create/update/delete env, network, TLS, health checks
+- [ ] **NEW:** Conformance suite runs in CI against each adapter (SPOT, SDDC Flex)
+- [ ] Implement platform selection logic (auto, vm, container) with OPA pre-check
+- [ ] Build manifest translation orchestration (deploy.yaml → platform-specific primitives)
 - [ ] Create API: `POST /platforms/select`, `POST /deploy/translate`
-- [ ] Implement platform capability detection
-- [ ] Build adapter registry and dynamic loading
+- [ ] **NEW:** Implement capability discovery endpoint: `GET /providers/{id}/capabilities`
+- [ ] Build adapter registry with dynamic loading (read providers from DB + signed bundles in object storage)
+- [ ] **NEW:** Support hot-plug: enable/disable providers without redeployment
 - [ ] Consume `cmd.deploy.apply` events
-- [ ] Emit `cmd.sddc.*` or `cmd.spot.*` based on selection
-- [ ] Implement platform failover logic
-- [ ] Cache platform metadata in Redis
-- [ ] Create platform health checks
+- [ ] Emit `cmd.sddc.*` or `cmd.spot.*` based on placement + policy
+- [ ] Implement platform failover logic (if SPOT unavailable, try SDDC if allowed)
+- [ ] Cache platform metadata and capabilities in Redis
+- [ ] Create platform health probe endpoints
 - [ ] Write unit tests for routing logic
-- [ ] Document platform selection algorithm
+- [ ] Document platform selection algorithm with decision tree
 
-**Dependencies:** Epic 1.2, Epic 1.5
+**Dependencies:** Epic 1.2, Epic 1.5, Epic 2.9 (OPA pre-check)
 **Team:** Backend
 **Estimated Effort:** 4-5 weeks
+
+**Go/No-Go Gate:**
+- [ ] Conformance suite passing for at least one provider (SPOT)
+- [ ] `provider.yaml` loaded and capabilities exposed via API
+- [ ] Platform selection correctly routes based on deploy.yaml preference
+- [ ] Hot-plug tested: provider disabled without downtime
 
 ---
 
 ### Epic 2.2: Workload Placement Engine ⬜
 
-**Goal:** Intelligent platform recommendation based on workload characteristics.
+**Goal:** Rules-based platform recommendation with compliance constraints and cost estimation.
 
 **Acceptance Criteria:**
-- [ ] Design decision matrix (stateful→VM, stateless→K8s, etc.)
-- [ ] Implement rules-based placement algorithm
-- [ ] Parse deploy.yaml for placement hints
-- [ ] Analyze workload characteristics (CPU, memory, persistence)
+- [ ] Design decision matrix (stateful→VM, stateless→K8s, compliance→VM, etc.)
+- [ ] Implement rules-based placement algorithm (Rego or custom logic)
+- [ ] Parse deploy.yaml for placement hints (`platform.preference`, `platform.constraints`)
+- [ ] Analyze workload characteristics (CPU, memory, persistence, scaling patterns)
 - [ ] Create API: `POST /placement/recommend`, `GET /placement/explain/:envId`
-- [ ] Implement compliance constraint evaluation (PCI-DSS→VM)
-- [ ] Build cost estimation integration
-- [ ] Emit `evt.placement.recommended` with reasoning
-- [ ] Cache placement decisions in Redis/PostgreSQL
-- [ ] Create placement override mechanism
-- [ ] Build placement analytics dashboard
-- [ ] Write tests for decision matrix
-- [ ] Document placement strategy
+- [ ] Implement compliance constraint evaluation (PCI-DSS→force VM, PII→specific regions)
+- [ ] Build cost estimation integration (estimate VM cost vs K8s pod cost)
+- [ ] **NEW:** Emit `evt.placement.recommended` with reasoning (why this platform was chosen)
+- [ ] **NEW:** Placement recommendations **annotate** the deploy request; OPA admits/denies
+- [ ] Cache placement decisions in Redis/PostgreSQL (invalidate on manifest change)
+- [ ] Create placement override mechanism for operators
+- [ ] Build placement analytics dashboard (defer to Phase 3, API-only for MVP)
+- [ ] Write tests for all decision matrix branches
+- [ ] Document placement strategy with examples
 
-**Dependencies:** Epic 2.1
+**Dependencies:** Epic 2.1, Epic 2.9 (OPA integration)
 **Team:** Backend
-**Estimated Effort:** 3-4 weeks
+**Estimated Effort:** 2-3 weeks (simplified to rules-only, defer ML to Phase 4)
+
+**Go/No-Go Gate:**
+- [ ] Placement logic correctly routes stateful workload to VM platform
+- [ ] Compliance constraints enforced (PCI workload blocked from K8s)
+- [ ] Cost estimation returns plausible values
+- [ ] `explain` endpoint returns human-readable reasoning
 
 ---
 
 ### Epic 2.3: Orchestrator Service ⬜
 
-**Goal:** Stateful workflow engine for deploy, rollback, promote, destroy operations.
+**Goal:** Stateful workflow engine with saga pattern for deploy, rollback, destroy.
 
 **Acceptance Criteria:**
-- [ ] Deploy Temporal/Airflow/custom workflow engine
-- [ ] Design workflow state machine (provision→build→deploy→verify)
-- [ ] Implement saga pattern for compensating transactions
-- [ ] Build deployment workflow with rollback
-- [ ] Build environment promotion workflow
-- [ ] Build environment destruction workflow
-- [ ] Create API: `POST /workflows/:type/start`, `GET /workflows/:id`
-- [ ] Store workflow states in PostgreSQL
+- [ ] Deploy Temporal/custom workflow engine with HA (3+ workers)
+- [ ] Design workflow state machine (receive deploy → placement → provision → build → deploy → verify)
+- [ ] **NEW:** Implement deterministic workflow IDs keyed by (tenant, project, env, commit SHA)
+- [ ] Implement saga pattern for compensating transactions (rollback on failure)
+- [ ] **NEW:** Sagas emit compensation events with reason codes and stack traces
+- [ ] **NEW:** Test saga reentrancy: kill orchestrator mid-deploy, restart, verify resume from checkpoint
+- [ ] Build deployment workflow with rollback capability
+- [ ] Build environment promotion workflow (staging → production)
+- [ ] Build environment destruction workflow with confirmation
+- [ ] Create API: `POST /workflows/:type/start`, `GET /workflows/:id`, `POST /workflows/:id/cancel`
+- [ ] Store workflow states in PostgreSQL with event sourcing
 - [ ] Consume `cmd.deploy.apply` events
 - [ ] Emit `cmd.provision.*`, `cmd.network.*`, `evt.deploy.*`
-- [ ] Implement workflow timeout and retry logic
-- [ ] Build workflow visualization UI
-- [ ] Write saga integration tests
-- [ ] Document workflow state machines
+- [ ] Implement workflow timeout (max 30 min) and retry logic with backoff
+- [ ] **NEW:** Implement idempotency: same workflow ID + idempotency key returns existing workflow status
+- [ ] Build workflow visualization UI (defer to Phase 3, API-only for MVP)
+- [ ] Write saga integration tests with simulated failures at each step
+- [ ] Document workflow state machines with Mermaid diagrams
 
 **Dependencies:** Epic 1.2, Epic 2.1
 **Team:** Backend
 **Estimated Effort:** 5-6 weeks
 
+**Go/No-Go Gate:**
+- [ ] Deployment workflow completes successfully end-to-end
+- [ ] Saga compensation tested: failure at step 3 triggers rollback of steps 2 and 1
+- [ ] Workflow survives orchestrator restart (persistence verified)
+- [ ] Idempotency verified: retried deploy returns existing workflow
+
 ---
 
-### Epic 2.4: Build Service ⬜
+### Epic 2.4: Build Service ⬜ **[DEFERRED FOR MVP]**
 
 **Goal:** Docker-based build pipeline producing multi-arch images for both platforms.
 
-**Acceptance Criteria:**
-- [ ] Implement Docker build orchestration
-- [ ] Support Dockerfile builds from Git repos
-- [ ] Build multi-arch images (amd64, arm64)
-- [ ] Push artifacts to container registry
-- [ ] Create API: `POST /builds`, `GET /builds/:id/logs`
-- [ ] Consume `evt.commit.pushed` events
-- [ ] Emit `evt.build.succeeded/failed` events
-- [ ] Stream build logs in real-time (WebSocket/SSE)
-- [ ] Implement build caching for faster builds
-- [ ] Store build artifacts in MinIO/S3
-- [ ] Build layer caching and optimization
-- [ ] Implement build isolation per tenant
-- [ ] Write build performance tests
-- [ ] Document Dockerfile best practices
+**Status:** ⏭️ **Deferred - Use GitHub Actions for builds in MVP**
 
-**Dependencies:** Epic 1.2, Epic 1.6, Epic 1.7
+**Rationale:** To reach working deploy faster, rely on GitHub Actions to build and push Docker images. Developers provide pre-built image references. Build Service added in Phase 3 for integrated builds.
+
+**MVP Alternative:**
+- Developers push code to GitHub
+- GitHub Actions workflow builds Docker image
+- Image pushed to container registry
+- Webhook triggers deployment with image reference
+
+**Future Epic (Phase 3):** Internal build service for on-prem customers or integrated build logs.
+
+**Dependencies:** Epic 1.2, Epic 1.6, Epic 1.7 (future)
+**Team:** Backend
+**Estimated Effort:** 4-5 weeks (when prioritized)
+
+---
+
+### Epic 2.5: SDDC Flex Adapter (VM Provisioning) ⬜ **[DEFERRED TO PHASE 3]**
+
+**Status:** ⏭️ **Deferred - Build SPOT Adapter first for faster MVP**
+
+**Rationale:** RXT SPOT (K8s) is faster to integrate and has better API ergonomics. SDDC Flex requires vCenter/NSX which adds complexity. Focus on SPOT for MVP (8-10 weeks), then add SDDC Flex in parallel workstream.
+
+**Future Epic (Phase 3):** Integrate vCenter API and NSX for VM-based workloads.
+
+**Dependencies:** Epic 1.1, Epic 1.2, Epic 2.3 (future)
+**Team:** Backend, Infrastructure
+**Estimated Effort:** 6-8 weeks (when prioritized)
+
+---
+
+### Epic 2.6: SDDC Networking Adapter (NSX) ⬜ **[DEFERRED TO PHASE 3]**
+
+**Status:** ⏭️ **Deferred - Build SPOT Networking first**
+
+**Rationale:** Tied to SDDC Flex Adapter. Defer to Phase 3.
+
+**Dependencies:** Epic 1.2, Epic 2.5 (future)
+**Team:** Backend, Networking
+**Estimated Effort:** 5-6 weeks (when prioritized)
+
+---
+
+### Epic 2.7: RXT SPOT Adapter (Kubernetes Provisioning) ⬜ **[MVP PRIORITY]**
+
+**Goal:** Integrate with Kubernetes API to provision container-based workloads on RXT SPOT with conformance to provider interface.
+
+**Acceptance Criteria:**
+- [ ] **NEW:** Implement `IComputePlatform` interface from `@rxt/platform-sdk`
+- [ ] **NEW:** Pass provider conformance suite (Epic 2.1)
+- [ ] **NEW:** Ship `provider.yaml` with capabilities: `platform: rxt-spot, compute: k8s, networking: ingress, storage: pvc`
+- [ ] Implement Kubernetes API client (client-go) with credential broker
+- [ ] Build namespace provisioning with resource quotas and limit ranges
+- [ ] Implement Deployment manifest generation from deploy.yaml
+- [ ] Create Service resources (ClusterIP, LoadBalancer)
+- [ ] Configure PersistentVolumeClaim resources
+- [ ] Implement HPA (Horizontal Pod Autoscaler) based on CPU/memory metrics
+- [ ] Create API: `POST /spot/provision/check`
+- [ ] Consume `cmd.spot.provision.*` events with idempotency key handling
+- [ ] Emit `evt.provisioned`, `evt.provision.failed` events
+- [ ] Emit `evt.spot.pod.created` platform-specific events
+- [ ] **NEW:** Implement Kubernetes RBAC: least privilege service account per environment
+- [ ] **NEW:** Kubeconfig broker returns short-lived credentials (TTL: 1h) via Secrets Service
+- [ ] Implement pod lifecycle management (create, update, delete, restart)
+- [ ] Build Helm chart deployment support (optional for MVP, raw manifests sufficient)
+- [ ] **NEW:** Write integration tests with kind/k3s cluster (spin up local cluster in CI)
+- [ ] **NEW:** Test idempotency: same provision request returns existing namespace
+- [ ] Document Kubernetes integration (alignment with SPOT_shim.md)
+
+**Dependencies:** Epic 1.1, Epic 1.2, Epic 2.1, Epic 2.3
 **Team:** Backend
 **Estimated Effort:** 4-5 weeks
 
----
-
-### Epic 2.5: SDDC Flex Adapter (VM Provisioning) ⬜
-
-**Goal:** Integrate with vCenter/NSX to provision VM-based workloads.
-
-**Acceptance Criteria:**
-- [ ] Implement vCenter API client (govc/govmomi)
-- [ ] Build vApp template management
-- [ ] Implement VM provisioning from templates
-- [ ] Configure VM specs (CPU, memory, storage)
-- [ ] Implement cloud-init bootstrapping
-- [ ] Install Docker runtime on VMs
-- [ ] Deploy container images inside VMs
-- [ ] Create API: `POST /sddc/provision/check`
-- [ ] Consume `cmd.sddc.provision.*` events
-- [ ] Emit `evt.provisioned`, `evt.provision.failed` events
-- [ ] Emit `evt.sddc.vm.created` platform-specific events
-- [ ] Implement VM lifecycle management (start, stop, destroy)
-- [ ] Write integration tests with vCenter mock
-- [ ] Document vCenter integration
-
-**Dependencies:** Epic 1.1, Epic 1.2, Epic 2.3
-**Team:** Backend, Infrastructure
-**Estimated Effort:** 6-8 weeks
+**Go/No-Go Gate:**
+- [ ] Conformance suite passing for SPOT adapter
+- [ ] Namespace created with pods running
+- [ ] Kubeconfig short-lived credentials working
+- [ ] Idempotency verified: duplicate provision returns existing resources
+- [ ] Integration tests green on CI with kind cluster
 
 ---
 
-### Epic 2.6: SDDC Networking Adapter (NSX) ⬜
+### Epic 2.8: SPOT Networking Adapter (K8s Ingress) ⬜ **[MVP PRIORITY]**
 
-**Goal:** Configure NSX load balancers, firewall rules, and TLS for SDDC Flex.
-
-**Acceptance Criteria:**
-- [ ] Implement NSX API client
-- [ ] Build NSX load balancer configuration
-- [ ] Implement firewall rule creation
-- [ ] Configure micro-segmentation for isolation
-- [ ] Implement DNS record management
-- [ ] Build TLS certificate provisioning (Let's Encrypt)
-- [ ] Create API: `POST /sddc/network/validate`
-- [ ] Consume `cmd.sddc.network.*` events
-- [ ] Emit `evt.network.ready/failed` events
-- [ ] Emit `evt.sddc.nsx.configured` platform-specific events
-- [ ] Implement rate limiting via NSX
-- [ ] Build network policy templates
-- [ ] Write integration tests with NSX mock
-- [ ] Document NSX integration
-
-**Dependencies:** Epic 1.2, Epic 2.5
-**Team:** Backend, Networking
-**Estimated Effort:** 5-6 weeks
-
----
-
-### Epic 2.7: RXT SPOT Adapter (Kubernetes Provisioning) ⬜
-
-**Goal:** Integrate with Kubernetes API to provision container-based workloads.
+**Goal:** Configure Ingress controllers, LoadBalancers, TLS, and network policies for RXT SPOT.
 
 **Acceptance Criteria:**
-- [ ] Implement Kubernetes API client (client-go)
-- [ ] Build namespace provisioning with quotas
-- [ ] Implement Deployment manifest generation
-- [ ] Create Service and Ingress resources
-- [ ] Configure PersistentVolume claims
-- [ ] Implement HPA (Horizontal Pod Autoscaler)
-- [ ] Create API: `POST /spot/provision/check`
-- [ ] Consume `cmd.spot.provision.*` events
-- [ ] Emit `evt.provisioned`, `evt.provision.failed` events
-- [ ] Emit `evt.spot.pod.created` platform-specific events
-- [ ] Implement pod lifecycle management
-- [ ] Build Helm chart deployment support
-- [ ] Write integration tests with kind/k3s
-- [ ] Document Kubernetes integration (SPOT_shim.md alignment)
-
-**Dependencies:** Epic 1.1, Epic 1.2, Epic 2.3
-**Team:** Backend
-**Estimated Effort:** 5-6 weeks
-
----
-
-### Epic 2.8: SPOT Networking Adapter (K8s Ingress) ⬜
-
-**Goal:** Configure Ingress controllers, LoadBalancers, and TLS for RXT SPOT.
-
-**Acceptance Criteria:**
-- [ ] Implement Ingress resource creation (NGINX/Traefik)
-- [ ] Build LoadBalancer service configuration
-- [ ] Integrate cert-manager for TLS automation
-- [ ] Configure DNS record management
-- [ ] Implement network policies for isolation
+- [ ] **NEW:** Implement `IComputePlatform` networking methods
+- [ ] **NEW:** Pass network conformance tests (TLS, domain routing, network policies)
+- [ ] Implement Ingress resource creation (NGINX or Traefik ingress controller)
+- [ ] Build LoadBalancer service configuration (L4 load balancing)
+- [ ] Integrate cert-manager for TLS automation (Let's Encrypt ACME)
+- [ ] Configure DNS record management (Route53, Cloudflare, or manual)
+- [ ] **NEW:** Implement network policies for tenant isolation (deny all ingress/egress by default, whitelist only)
+- [ ] **NEW:** Write e2e tests verifying network policy enforcement (pod A cannot access pod B in different namespace)
 - [ ] Create API: `POST /spot/network/validate`
 - [ ] Consume `cmd.spot.network.*` events
 - [ ] Emit `evt.network.ready/failed` events
 - [ ] Emit `evt.spot.ingress.configured` platform-specific events
-- [ ] Implement rate limiting via Ingress annotations
-- [ ] Build Ingress templates for common patterns
-- [ ] Write integration tests with Ingress controller
-- [ ] Document Ingress configuration patterns
+- [ ] Implement rate limiting via Ingress annotations (e.g., `nginx.ingress.kubernetes.io/rate-limit`)
+- [ ] Build Ingress templates for common patterns (HTTP, gRPC, WebSocket)
+- [ ] Write integration tests with Ingress controller in kind cluster
+- [ ] Document Ingress configuration patterns and TLS setup
 
 **Dependencies:** Epic 1.2, Epic 2.7
 **Team:** Backend
 **Estimated Effort:** 3-4 weeks
 
+**Go/No-Go Gate:**
+- [ ] Ingress created and serving HTTP traffic
+- [ ] TLS certificate issued by cert-manager and HTTPS working
+- [ ] Network policies tested: cross-namespace access denied
+- [ ] Rate limiting verified via load test
+
 ---
 
 ### Epic 2.9: Policy Service (OPA Gatekeeper) ⬜
 
-**Goal:** Admission and runtime policy evaluation for compliance and security.
+**Goal:** Admission and runtime policy evaluation as pre-check for Platform Abstraction Layer.
 
 **Acceptance Criteria:**
-- [ ] Deploy Open Policy Agent (OPA)
-- [ ] Design Rego policy bundle structure
+- [ ] Deploy Open Policy Agent (OPA) with HA (3 replicas)
+- [ ] Design Rego policy bundle structure (policies/, data/, tests/)
+- [ ] **NEW:** Integrate OPA as pre-check for Platform Abstraction Layer (placement recommendations go to OPA for admit/deny)
 - [ ] Implement policy evaluation API: `POST /evaluate`
-- [ ] Build admission policies (TLS required, resource limits, etc.)
-- [ ] Implement compliance policies (PCI-DSS, HIPAA)
-- [ ] Store Rego bundles in object storage
-- [ ] Emit `evt.policy.violation` events
-- [ ] Build policy testing framework
-- [ ] Create policy override mechanism for emergencies
-- [ ] Implement policy version control
-- [ ] Build policy violation dashboard
-- [ ] Write policy unit tests
-- [ ] Document policy authoring guide
+- [ ] Build admission policies (TLS required, resource limits set, no public exposure for PCI workloads)
+- [ ] Implement compliance policies (PCI-DSS→VM only, HIPAA→encryption at rest required)
+- [ ] Store Rego bundles in object storage with versioning
+- [ ] Emit `evt.policy.violation` events with policy name and reason
+- [ ] Build policy testing framework (OPA test command in CI)
+- [ ] Create policy override mechanism for break-glass scenarios (requires approval + audit log)
+- [ ] Implement policy version control (bundle versioned with git SHA)
+- [ ] Build policy violation dashboard (defer to Phase 3, API-only for MVP)
+- [ ] Write policy unit tests for all rules
+- [ ] Document policy authoring guide with examples
 
 **Dependencies:** Epic 1.1, Epic 1.2
 **Team:** Backend, Security
-**Estimated Effort:** 4-5 weeks
+**Estimated Effort:** 3-4 weeks
+
+**Go/No-Go Gate:**
+- [ ] Policy evaluation blocking non-compliant deployments
+- [ ] PCI workload blocked from K8s platform
+- [ ] Policy violation events emitted and logged
+- [ ] Policy tests passing in CI
 
 ---
 
-## Phase 3: Observability & Operations (Months 3-5)
+## Phase 3: Observability & Operations (Month 3: Weeks 9-12)
 
 ### Epic 3.1: Observability Bridge ⬜
 
-**Goal:** Unified log, metric, and trace collection from both platforms.
+**Goal:** Unified log, metric, and trace collection from SPOT with golden dashboards.
 
 **Acceptance Criteria:**
-- [ ] Deploy observability agents (Datadog/Telegraf/OTEL)
-- [ ] Implement VM log collection (SDDC Flex)
-- [ ] Implement pod log collection (RXT SPOT)
-- [ ] Build metric aggregation from both platforms
-- [ ] Create unified dashboard templates
+- [ ] Deploy observability agents (Datadog/Telegraf/OTEL) to SPOT clusters
+- [ ] Implement pod log collection (RXT SPOT) with structured logging
+- [ ] Build metric aggregation from Kubernetes metrics-server
+- [ ] **NEW:** Create golden dashboards per service (RPS, p95 latency, 5xx rate, event bus lag, DLQ size, workflow states)
+- [ ] **NEW:** Create unified dashboard showing deployment success/fail rate by platform
 - [ ] Create API: `POST /dashboards`, `POST /annotations`
-- [ ] Consume `evt.deploy.*` events for annotations
+- [ ] Consume `evt.deploy.*` events for deployment annotations in Grafana/Datadog
 - [ ] Emit `evt.obs.annotated` events
-- [ ] Build cross-platform metric correlation
-- [ ] Implement distributed tracing
-- [ ] Create alert rule templates
-- [ ] Integrate with PagerDuty/Opsgenie
+- [ ] Build cross-platform metric correlation (defer VM correlation to Phase 4)
+- [ ] Implement distributed tracing (OpenTelemetry) for deployment workflows
+- [ ] Create alert rule templates (deployment failures >5% over 1h, time-to-ready >12 min)
+- [ ] Integrate with PagerDuty/Opsgenie for on-call alerts
+- [ ] **NEW:** Set up synthetic deploy every 15 minutes; alert on failures
 - [ ] Write observability integration tests
-- [ ] Document dashboard creation guide
+- [ ] **NEW:** Document runbooks: DLQ drain, stuck workflow retry, SPOT quota exceeded
 
-**Dependencies:** Epic 1.2, Epic 2.5, Epic 2.7
+**Dependencies:** Epic 1.2, Epic 2.7
 **Team:** Backend, SRE
 **Estimated Effort:** 4-5 weeks
 
+**Go/No-Go Gate:**
+- [ ] Golden dashboards showing live metrics from all services
+- [ ] Synthetic deploy monitored and alerting on failures
+- [ ] Deployment annotation visible in Grafana timeline
+- [ ] Runbooks documented for top 5 incident scenarios
+
 ---
 
-### Epic 3.2: Usage & Billing Service ⬜
+### Epic 3.2: Usage & Billing Service (Minimal for MVP) ⬜
 
-**Goal:** Cross-platform metering, aggregation, and billing export.
+**Goal:** SPOT usage sampling with cost estimation for early FinOps visibility.
 
 **Acceptance Criteria:**
-- [ ] Design usage rollup schema (CPU, memory, storage, egress)
-- [ ] Implement usage sample collection from SDDC Flex VMs
-- [ ] Implement usage sample collection from RXT SPOT pods
-- [ ] Consume `evt.deploy.started/stopped` events
+- [ ] Design usage rollup schema (CPU, memory, storage, egress) with platform field
+- [ ] **NEW:** Implement usage sample collection from RXT SPOT pods (query metrics-server every 5 min)
+- [ ] **NEW:** Estimate SPOT cost from node/pool pricing signals (cache public SPOT price API)
+- [ ] Consume `evt.deploy.started/stopped` events to track billable time
 - [ ] Consume `evt.usage.sample` events
-- [ ] Build time-series rollup aggregation
-- [ ] Create API: `GET /usage`, `POST /budgets`
-- [ ] Emit `evt.usage.window.closed` events
-- [ ] Integrate with Undercloud/Quote Manager
-- [ ] Build cost estimation API
-- [ ] Implement budget alerts and notifications
-- [ ] Create usage analytics dashboard
+- [ ] Build time-series rollup aggregation (hourly → daily → monthly)
+- [ ] Create API: `GET /usage?tenant=...&project=...&timeRange=...`
+- [ ] Emit `evt.usage.window.closed` events (hourly rollup completed)
+- [ ] **NEW:** Implement reconciliation job: compare computed usage vs SPOT provider sources; alert on >2% divergence
+- [ ] Integrate with Undercloud/Quote Manager (defer detailed billing integration to Phase 4)
+- [ ] Build cost estimation API: `GET /cost/estimate?env=...`
+- [ ] Create usage analytics dashboard (defer to Phase 4, API-only for MVP)
 - [ ] Write billing reconciliation tests
-- [ ] Document billing model and pricing
+- [ ] Document usage schema and cost estimation methodology
 
-**Dependencies:** Epic 1.2, Epic 2.5, Epic 2.7
+**Dependencies:** Epic 1.2, Epic 2.7
 **Team:** Backend
-**Estimated Effort:** 5-6 weeks
+**Estimated Effort:** 3-4 weeks (trimmed by deferring VM usage and detailed billing)
+
+**Go/No-Go Gate:**
+- [ ] Usage samples collected from SPOT pods
+- [ ] Cost estimation returns plausible values
+- [ ] Reconciliation job detects divergence in test scenario
+- [ ] API returns usage data by tenant/project/time
 
 ---
 
-### Epic 3.3: Domains Service ⬜
+### Epic 3.3: Domains Service ⬜ **[DEFERRED TO PHASE 4]**
 
-**Goal:** Domain-to-environment binding and ACME/TLS lifecycle management.
+**Status:** ⏭️ **Deferred - MVP uses Ingress hostnames without custom domains**
 
-**Acceptance Criteria:**
-- [ ] Design domain registry schema
-- [ ] Implement domain CRUD operations
-- [ ] Build domain validation (DNS TXT records)
-- [ ] Integrate with ACME providers (Let's Encrypt)
-- [ ] Create API: `POST /domains`, `POST /domains/:id/validate`
-- [ ] Consume `cmd.domain.*` events
-- [ ] Emit `evt.domain.valid/invalid` events
-- [ ] Implement TLS certificate renewal automation
-- [ ] Build wildcard domain support
-- [ ] Implement domain ownership verification
-- [ ] Create custom domain configuration UI
-- [ ] Write domain validation tests
-- [ ] Document domain setup guide
-
-**Dependencies:** Epic 1.2, Epic 1.5
-**Team:** Backend
-**Estimated Effort:** 3-4 weeks
+**Rationale:** Custom domain management adds complexity. MVP uses cluster-provided domains (e.g., `app-name.spot.rackspace.com`). Custom domains added in Phase 4.
 
 ---
 
-### Epic 3.4: Notifications Service ⬜
+### Epic 3.4: Notifications Service ⬜ **[DEFERRED TO PHASE 4]**
 
-**Goal:** Multi-channel notification delivery (Email, Slack, Webhook) with retries.
+**Status:** ⏭️ **Deferred - Use basic email via SMTP for MVP**
 
-**Acceptance Criteria:**
-- [ ] Implement notification template engine
-- [ ] Build email delivery (SMTP/SendGrid)
-- [ ] Build Slack integration (webhooks)
-- [ ] Build custom webhook delivery
-- [ ] Create API: `POST /notify`
-- [ ] Consume notable events (deploy success/failure, policy violations)
-- [ ] Implement notification routing rules per user/org
-- [ ] Build retry logic with exponential backoff
-- [ ] Store notification history in PostgreSQL
-- [ ] Implement notification preferences UI
-- [ ] Build notification delivery reporting
-- [ ] Write notification delivery tests
-- [ ] Document notification configuration
-
-**Dependencies:** Epic 1.2
-**Team:** Backend
-**Estimated Effort:** 2-3 weeks
+**Rationale:** Build Slack/webhook integrations in Phase 5. MVP uses simple email notifications for deployment success/failure.
 
 ---
 
-### Epic 3.5: Templates/Blueprints Service ⬜
+### Epic 3.5: Templates/Blueprints Service ⬜ **[DEFERRED TO PHASE 4]**
 
-**Goal:** Golden templates and compliance-ready project blueprints.
+**Status:** ⏭️ **Deferred - MVP uses manual deploy.yaml authoring**
 
-**Acceptance Criteria:**
-- [ ] Design template schema (frameworks, compliance variants)
-- [ ] Build template CRUD API: `GET /templates`, `POST /templates`
-- [ ] Create framework templates (Next.js, Django, Spring Boot, etc.)
-- [ ] Create compliance templates (PCI-DSS, HIPAA, SOC2)
-- [ ] Store templates in object storage
-- [ ] Index templates in PostgreSQL
-- [ ] Emit `evt.template.published` events
-- [ ] Implement template versioning
-- [ ] Build template preview/validation
-- [ ] Create template marketplace UI
-- [ ] Implement template forking
-- [ ] Write template validation tests
-- [ ] Document template authoring guide
-
-**Dependencies:** Epic 1.1, Epic 1.2
-**Team:** Backend
-**Estimated Effort:** 3-4 weeks
+**Rationale:** Templates reduce time-to-value but aren't blocking for MVP. Add golden templates in Phase 4.
 
 ---
 
-### Epic 3.6: Runner Controller (Optional) ⬜
+## Phase 4 & 5: Advanced Features (Months 4-9)
 
-**Goal:** Manage CI/CD runner pools (shared/dedicated/ephemeral) for on-prem builds.
+**[All Phase 4 and 5 epics remain as documented in v1.0, with updates noted below]**
 
-**Acceptance Criteria:**
-- [ ] Design runner pool schema
-- [ ] Implement runner provisioning (Docker/VM-based)
-- [ ] Build runner lease management
-- [ ] Create API: `POST /runners/pools`, `POST /runners/scale`
-- [ ] Consume `cmd.runners.ensure` events
-- [ ] Emit `evt.runners.ready` events
-- [ ] Implement runner auto-scaling
-- [ ] Build runner health monitoring
-- [ ] Implement runner cleanup (ephemeral)
-- [ ] Store runner metadata in PostgreSQL
-- [ ] Use Redis for runner locks
-- [ ] Write runner scaling tests
-- [ ] Document runner setup guide
+### Key Updates to Phase 4 & 5:
 
-**Dependencies:** Epic 1.1, Epic 1.2, Epic 1.7
-**Team:** Backend
-**Estimated Effort:** 4-5 weeks
-**Status:** ⏭️ Deferred (use external CI initially)
+- **Epic 2.5 & 2.6 (SDDC Flex Adapters):** Moved here from Phase 2
+- **Epic 2.4 (Build Service):** Moved here from Phase 2
+- **Epic 3.3 (Domains):** Moved here from Phase 3
+- **Epic 3.4 (Notifications):** Enhanced Slack/webhook moved here
+- **Epic 3.5 (Templates):** Moved here from Phase 3
 
----
+**Additional Phase 4 Epics:**
+- Implement full multi-platform Usage & Billing (SDDC + SPOT)
+- Build live migration between platforms
+- Add advanced autoscaling and cost optimization
 
-## Phase 4: Advanced Features & Optimization (Months 6-9)
-
-### Epic 4.1: CLI Tool ⬜
-
-**Goal:** Developer-friendly command-line interface for RXT Deploy.
-
-**Acceptance Criteria:**
-- [ ] Build CLI in Go/Rust with Cobra/Clap
-- [ ] Implement authentication flow (OAuth device code)
-- [ ] Create commands: `rxt init`, `rxt deploy`, `rxt logs`, `rxt scale`
-- [ ] Implement project scaffolding
-- [ ] Build interactive deployment wizard
-- [ ] Implement log streaming from CLI
-- [ ] Build shell completion (bash, zsh, fish)
-- [ ] Implement configuration file management (.rxtrc)
-- [ ] Create plugin system for extensibility
-- [ ] Build update notification mechanism
-- [ ] Package for multiple platforms (homebrew, apt, etc.)
-- [ ] Write CLI integration tests
-- [ ] Document CLI commands and usage
-
-**Dependencies:** Epic 1.4
-**Team:** Developer Experience
-**Estimated Effort:** 5-6 weeks
+**Additional Phase 5 Epics:**
+- CLI tool with plugin system
+- Terraform provider
+- GitHub Actions / GitLab CI integrations
+- Datadog deep integration
+- Slack bot for ChatOps
 
 ---
 
-### Epic 4.2: GraphQL API (Optional) ⬜
+## Revised MVP Critical Path (8-10 Weeks)
 
-**Goal:** Flexible query API for frontend and integrations.
+**Goal:** Working deploy to RXT SPOT with minimal but complete feature set
 
-**Acceptance Criteria:**
-- [ ] Deploy GraphQL server (Apollo/Hasura)
-- [ ] Define schema for projects, environments, deployments
-- [ ] Implement queries (projects, logs, metrics)
-- [ ] Implement mutations (deploy, scale, rollback)
-- [ ] Implement subscriptions (deployment status, logs)
-- [ ] Build DataLoader for N+1 prevention
-- [ ] Implement field-level authorization
-- [ ] Create GraphQL playground
-- [ ] Build query complexity limits
-- [ ] Implement caching strategy
-- [ ] Write GraphQL integration tests
-- [ ] Document GraphQL schema
+### Month 1 (Weeks 1-4): Foundation
+1. Epic 1.1: Infrastructure
+2. Epic 1.2: Event Bus with schema governance
+3. Epic 1.3: Identity (defer SSO)
+4. Epic 1.4: API Gateway with idempotency
+5. **Spike:** Authenticate to SPOT, create namespace, get kubeconfig, verify `kubectl get nodes`
 
-**Dependencies:** Epic 1.4
-**Team:** Backend
-**Estimated Effort:** 4-5 weeks
-**Status:** ⏭️ Deferred (REST API sufficient initially)
+### Month 2 (Weeks 5-8): Platform Core
+6. Epic 1.5: Project Registry
+7. Epic 1.6: Webhooks (GitHub only)
+8. Epic 2.1: Provider Router & Contracts
+9. Epic 2.3: Orchestrator with deploy workflow only
+10. Epic 2.7: SPOT Adapter
+11. Epic 2.8: SPOT Networking
+12. **Use GitHub Actions** for builds (no Build Service yet)
 
----
+### Month 3 (Weeks 9-12): Ops Readiness
+13. Epic 1.7: Secrets
+14. Epic 1.8: Audit Log
+15. Epic 2.2: Placement (rules-based)
+16. Epic 2.9: Policy (OPA-lite)
+17. Epic 3.1: Observability with golden dashboards
+18. Epic 3.2: Usage (SPOT estimation only)
 
-### Epic 4.3: Live Migration Service ⬜
-
-**Goal:** Migrate running workloads between SDDC Flex and RXT SPOT with minimal downtime.
-
-**Acceptance Criteria:**
-- [ ] Design migration workflow state machine
-- [ ] Implement VM→Container migration orchestration
-- [ ] Implement Container→VM migration orchestration
-- [ ] Build data migration strategies (volumes, databases)
-- [ ] Implement blue/green deployment for cutover
-- [ ] Build DNS cutover automation
-- [ ] Create API: `POST /migrations/start`, `GET /migrations/:id/status`
-- [ ] Implement rollback capability
-- [ ] Build migration dry-run mode
-- [ ] Create migration validation checks
-- [ ] Implement migration progress tracking
-- [ ] Write migration integration tests
-- [ ] Document migration playbooks
-
-**Dependencies:** Epic 2.5, Epic 2.6, Epic 2.7, Epic 2.8
-**Team:** Backend, SRE
-**Estimated Effort:** 8-10 weeks
-**Status:** ⏭️ Deferred to Phase 4
+**Deliverable:** Push code → GitHub Actions builds image → Webhook triggers RXT Deploy → Orchestrator provisions SPOT namespace → Deploys pod → Configures Ingress with TLS → Returns URL
 
 ---
 
-### Epic 4.4: Advanced Autoscaling ⬜
+## Testing Strategy
 
-**Goal:** Intelligent autoscaling based on custom metrics and business logic.
+### Contract Tests
+- **Provider conformance suite** runs against SPOT (and eventually SDDC) adapter
+- Tests run in CI against sandbox cluster
+- Golden test fixtures for all `IComputePlatform` methods
 
-**Acceptance Criteria:**
-- [ ] Implement custom metric collection
-- [ ] Build autoscaling decision engine
-- [ ] Integrate with HPA (Kubernetes)
-- [ ] Implement VM cloning for SDDC Flex scaling
-- [ ] Build predictive scaling (ML-based)
-- [ ] Create API: `POST /autoscaling/policies`, `GET /autoscaling/recommendations`
-- [ ] Implement scaling cooldown periods
-- [ ] Build cost-aware scaling policies
-- [ ] Create autoscaling simulation mode
-- [ ] Implement scaling event history
-- [ ] Build autoscaling analytics dashboard
-- [ ] Write autoscaling tests
-- [ ] Document autoscaling strategies
+### Chaos Tests
+- **Multi-tenant isolation**: Parallel deploys across 10 tenants, verify no cross-contamination
+- **Noisy neighbor**: One tenant consumes max quota, verify others unaffected
+- **Orchestrator failure**: Kill orchestrator mid-deploy, verify resume after restart
+- **Event bus partition**: Simulate NATS partition, verify DLQ and replay
 
-**Dependencies:** Epic 2.5, Epic 2.7, Epic 3.1
-**Team:** Backend, ML Engineering
-**Estimated Effort:** 6-8 weeks
-**Status:** ⏭️ Deferred to Phase 4
+### Security Tests
+- **Tenancy isolation suite**: Token swapping attempts blocked, RBAC bypass attempts blocked, cross-namespace K8s access blocked
+- **Secrets audit**: Verify all secret access logged
+- **Network policy enforcement**: Pod A in tenant 1 cannot reach pod B in tenant 2
 
----
-
-### Epic 4.5: Multi-Region Support ⬜
-
-**Goal:** Deploy applications across multiple regions with automatic failover.
-
-**Acceptance Criteria:**
-- [ ] Design multi-region data replication
-- [ ] Implement cross-region deployment orchestration
-- [ ] Build global load balancing configuration
-- [ ] Implement region affinity routing
-- [ ] Create API: `POST /regions`, `GET /regions/:id/health`
-- [ ] Build automatic region failover
-- [ ] Implement data residency compliance
-- [ ] Create multi-region cost optimization
-- [ ] Build region health monitoring
-- [ ] Implement cross-region deployment visualization
-- [ ] Write multi-region integration tests
-- [ ] Document multi-region architecture
-
-**Dependencies:** Epic 2.3, Epic 2.5, Epic 2.7
-**Team:** Backend, SRE
-**Estimated Effort:** 10-12 weeks
-**Status:** ⏭️ Deferred to Phase 4
+### Performance Tests
+- **Sustained deploy throughput**: 50 concurrent deployments with <2% failures
+- **Time-to-ready**: p95 < 10 minutes from webhook to healthy pod
+- **API latency**: p95 < 250ms under 1k RPS
 
 ---
 
-### Epic 4.6: Disaster Recovery Automation ⬜
+## Operational Readiness Gates (Go/No-Go per Phase)
 
-**Goal:** Automated backup, restore, and disaster recovery orchestration.
+### Phase 1 Gate (Foundation)
+- [ ] All control plane services healthy and monitored
+- [ ] Event schema registry enforcing validation
+- [ ] Multi-tenant isolation verified via chaos tests
+- [ ] Idempotency working end-to-end (edge → services)
+- [ ] Runbooks documented for top 5 infrastructure scenarios
 
-**Acceptance Criteria:**
-- [ ] Implement automated environment snapshots
-- [ ] Build backup scheduling and retention policies
-- [ ] Implement cross-region backup replication
-- [ ] Build point-in-time restore capability
-- [ ] Create API: `POST /backups`, `POST /restore/:backupId`
-- [ ] Implement disaster recovery runbooks as code
-- [ ] Build disaster recovery testing automation
-- [ ] Create RTO/RPO monitoring
-- [ ] Implement backup encryption
-- [ ] Build backup validation and verification
-- [ ] Create disaster recovery dashboard
-- [ ] Write disaster recovery tests
-- [ ] Document DR procedures
+### Phase 2 Gate (Platform Core)
+- [ ] Provider conformance suite passing for SPOT adapter
+- [ ] End-to-end deploy working (code → webhook → deploy → URL)
+- [ ] Saga compensation tested (rollback on failure)
+- [ ] Network policies enforced (cross-tenant isolation verified)
+- [ ] Synthetic deploy monitored and alerting
 
-**Dependencies:** Epic 2.5, Epic 2.7, Epic 4.5
-**Team:** Backend, SRE
-**Estimated Effort:** 6-8 weeks
-**Status:** ⏭️ Deferred to Phase 4
-
----
-
-### Epic 4.7: Cost Optimization Engine ⬜
-
-**Goal:** Automated cost analysis and optimization recommendations.
-
-**Acceptance Criteria:**
-- [ ] Build resource utilization analysis
-- [ ] Implement rightsizing recommendations
-- [ ] Build idle resource detection
-- [ ] Create reserved capacity optimization
-- [ ] Implement spot instance recommendations (RXT SPOT)
-- [ ] Create API: `GET /cost/analysis`, `GET /cost/recommendations`
-- [ ] Build cost anomaly detection
-- [ ] Implement budget forecasting
-- [ ] Create cost allocation by team/project
-- [ ] Build cost optimization automation (optional)
-- [ ] Create cost optimization dashboard
-- [ ] Write cost optimization tests
-- [ ] Document cost optimization strategies
-
-**Dependencies:** Epic 3.2
-**Team:** Backend, FinOps
-**Estimated Effort:** 5-6 weeks
-**Status:** ⏭️ Deferred to Phase 4
+### Phase 3 Gate (Ops Readiness)
+- [ ] Golden dashboards showing all service metrics
+- [ ] On-call rotation established with runbooks
+- [ ] Policy violations blocking non-compliant deploys
+- [ ] Usage data accurate within 2% of SPOT provider
+- [ ] Audit log integrity verified (hash chains)
 
 ---
 
-### Epic 4.8: Compliance & Security Hardening ⬜
+## Documentation & Developer Experience
 
-**Goal:** Enhanced compliance controls for regulated industries (PCI-DSS, HIPAA, SOC2).
-
-**Acceptance Criteria:**
-- [ ] Implement compliance policy packs (PCI, HIPAA, SOC2)
-- [ ] Build compliance scanning and reporting
-- [ ] Implement security posture monitoring
-- [ ] Create vulnerability scanning integration
-- [ ] Build compliance certification workflows
-- [ ] Create API: `GET /compliance/status`, `POST /compliance/scan`
-- [ ] Implement encryption at rest validation
-- [ ] Build network segmentation verification
-- [ ] Create compliance audit reports
-- [ ] Implement continuous compliance monitoring
-- [ ] Build compliance violation remediation
-- [ ] Write compliance validation tests
-- [ ] Document compliance controls
-
-**Dependencies:** Epic 1.8, Epic 2.9
-**Team:** Security, Compliance
-**Estimated Effort:** 8-10 weeks
-**Status:** ⏭️ Deferred to Phase 4
+**Required Deliverables:**
+- [ ] **OpenAPI** for Edge/API (all endpoints documented with examples)
+- [ ] **AsyncAPI** for event bus (all event schemas versioned)
+- [ ] **provider.yaml** spec documented with examples
+- [ ] **Postman collection** for MVP SPOT path (end-to-end flow)
+- [ ] **Sample app** with deploy.yaml demonstrating placement hints and policy evaluation
+- [ ] **Runbooks** for top 10 operational scenarios
 
 ---
 
-## Phase 5: Integration & Ecosystem (Ongoing)
-
-### Epic 5.1: Terraform Provider ⬜
-
-**Goal:** Infrastructure-as-Code support via Terraform provider.
-
-**Acceptance Criteria:**
-- [ ] Build Terraform provider in Go
-- [ ] Implement resources: `rxt_project`, `rxt_environment`, `rxt_deployment`
-- [ ] Implement data sources
-- [ ] Build state management integration
-- [ ] Create provider documentation
-- [ ] Publish to Terraform Registry
-- [ ] Build example configurations
-- [ ] Implement import functionality
-- [ ] Write provider integration tests
-- [ ] Create migration guide from manual deployments
-
-**Dependencies:** Epic 1.4
-**Team:** Developer Experience
-**Estimated Effort:** 4-5 weeks
-
----
-
-### Epic 5.2: GitHub Actions Integration ⬜
-
-**Goal:** Pre-built GitHub Actions for CI/CD workflows.
-
-**Acceptance Criteria:**
-- [ ] Create `rxt-deploy` GitHub Action
-- [ ] Implement authentication via OIDC
-- [ ] Build deployment action with status checks
-- [ ] Create rollback action
-- [ ] Build preview environment action (PR deployments)
-- [ ] Implement comment-based commands (/deploy, /rollback)
-- [ ] Create action marketplace listing
-- [ ] Build example workflows
-- [ ] Write action integration tests
-- [ ] Document action usage
-
-**Dependencies:** Epic 1.4, Epic 4.1
-**Team:** Developer Experience
-**Estimated Effort:** 2-3 weeks
-
----
-
-### Epic 5.3: GitLab CI Integration ⬜
-
-**Goal:** Pre-built GitLab CI/CD templates.
-
-**Acceptance Criteria:**
-- [ ] Create GitLab CI templates
-- [ ] Implement authentication integration
-- [ ] Build deployment jobs
-- [ ] Create review app templates
-- [ ] Implement merge request automation
-- [ ] Create template repository
-- [ ] Build example pipelines
-- [ ] Write integration tests
-- [ ] Document template usage
-
-**Dependencies:** Epic 1.4, Epic 4.1
-**Team:** Developer Experience
-**Estimated Effort:** 2-3 weeks
-
----
-
-### Epic 5.4: Datadog Integration ⬜
-
-**Goal:** Deep integration with Datadog for observability.
-
-**Acceptance Criteria:**
-- [ ] Build Datadog dashboard templates
-- [ ] Implement deployment event annotations
-- [ ] Create monitor templates (error rate, latency, etc.)
-- [ ] Build SLO tracking integration
-- [ ] Implement log correlation
-- [ ] Create Datadog app/integration listing
-- [ ] Build alert routing to RXT Deploy
-- [ ] Write integration guide
-- [ ] Document dashboard customization
-
-**Dependencies:** Epic 3.1
-**Team:** Backend, SRE
-**Estimated Effort:** 2-3 weeks
-
----
-
-### Epic 5.5: Slack Bot ⬜
-
-**Goal:** ChatOps interface for deployments and monitoring.
-
-**Acceptance Criteria:**
-- [ ] Build Slack bot application
-- [ ] Implement slash commands (/rxt deploy, /rxt status)
-- [ ] Build deployment notifications
-- [ ] Create interactive deployment approvals
-- [ ] Implement deployment status updates
-- [ ] Build incident response workflows
-- [ ] Create Slack app directory listing
-- [ ] Write bot interaction tests
-- [ ] Document Slack bot setup
-
-**Dependencies:** Epic 1.4, Epic 3.4
-**Team:** Developer Experience
-**Estimated Effort:** 3-4 weeks
-
----
-
-## Summary & Metrics
-
-### Total Epics: 43
-
-**By Phase:**
-- Phase 1 (Foundation): 8 epics
-- Phase 2 (Platform Core): 9 epics
-- Phase 3 (Observability): 6 epics
-- Phase 4 (Advanced): 8 epics
-- Phase 5 (Ecosystem): 5 epics
-
-**By Priority:**
-- **P0 (Critical Path):** 17 epics
-- **P1 (Important):** 14 epics
-- **P2 (Nice to Have):** 12 epics
-
-**Estimated Timeline:**
-- Phase 1-2: 3-4 months (MVP)
-- Phase 3: 2-3 months (Production-ready)
-- Phase 4: 3-4 months (Enterprise features)
-- Phase 5: Ongoing
-
----
-
-## Critical Path to MVP
-
-The following epics represent the **minimum viable product** to support basic deployments on both platforms:
-
-1. ✅ Epic 1.1: Infrastructure Setup
-2. ✅ Epic 1.2: Event Bus
-3. ✅ Epic 1.3: Identity & Access
-4. ✅ Epic 1.4: API Gateway
-5. ✅ Epic 1.5: Project Registry
-6. ✅ Epic 1.6: Webhook & VCS
-7. ✅ Epic 1.7: Secrets Service
-8. ✅ Epic 2.1: Platform Abstraction Layer
-9. ✅ Epic 2.2: Workload Placement Engine
-10. ✅ Epic 2.3: Orchestrator
-11. ✅ Epic 2.4: Build Service
-12. Choose platform path:
-    - **SDDC Flex:** Epic 2.5 + Epic 2.6
-    - **RXT SPOT:** Epic 2.7 + Epic 2.8
-    - **Both:** All four adapters
-
-**Estimated MVP Delivery:** 4-5 months with a team of 5-7 backend engineers
-
----
-
-## Risk Register
+## Updated Risk Register
 
 | Risk | Impact | Mitigation |
 |------|--------|------------|
-| vCenter/NSX API instability | High | Build comprehensive retry logic, fallback workflows |
-| Kubernetes version compatibility | Medium | Test against multiple K8s versions (1.25-1.29) |
-| Event bus message loss | High | Implement DLQ, event replay, idempotent consumers |
-| Platform adapter performance | Medium | Load test adapters, implement caching, parallel operations |
-| Cost tracking accuracy | High | Reconciliation jobs, audit trails, manual verification |
-| Multi-tenancy data leaks | Critical | RLS, comprehensive security testing, penetration tests |
+| vCenter/NSX API instability | High | Deferred to Phase 3; SPOT first reduces risk |
+| Kubernetes version compatibility | Medium | Test against K8s 1.25-1.29; use stable APIs only |
+| Event bus message loss | High | DLQ, replay, idempotent consumers, monitoring |
+| Platform adapter performance | Medium | Load tests, caching, parallel operations |
+| Cost tracking accuracy | High | Reconciliation jobs (2% threshold), audit trails |
+| Multi-tenancy data leaks | **Critical** | RLS, chaos tests, security tests, penetration tests |
+| **Adapter drift** | Medium | **Conformance suite** catches divergence in CI |
+| **Price signal volatility (SPOT)** | Medium | **Cache + percentile-based guardrails** |
+| **Auth token sprawl** | High | **Vault broker + short-lived tokens only** |
 
 ---
 
 ## Success Criteria
 
 **Technical:**
-- [ ] Deploy to both SDDC Flex and RXT SPOT from unified manifest
-- [ ] <10 min environment creation time
-- [ ] <5% deployment failure rate
+- [ ] Deploy to RXT SPOT from unified manifest
+- [ ] <10 min environment creation time (p95)
+- [ ] <2% deployment failure rate (after retries)
 - [ ] 99.9% API uptime
-- [ ] 100% cost attribution accuracy
+- [ ] Usage accuracy within 2% of provider data
 
 **Business:**
-- [ ] 15+ internal teams onboarded
-- [ ] 8+ external design partners
-- [ ] 30% increase in total compute utilization
-- [ ] 70% reduction in platform onboarding time
+- [ ] 10+ internal teams onboarded to SPOT
+- [ ] 5+ external design partners
+- [ ] 20% increase in RXT SPOT utilization
+- [ ] 70% reduction in SPOT onboarding time
 
 ---
 
+**Version:** 2.0 (Revised)
 **Last Updated:** October 21, 2025
 **Next Review:** Weekly during active development
