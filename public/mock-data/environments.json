@@ -1,0 +1,35 @@
+[
+  {
+    "id": "env_dev",
+    "projectId": "proj_abc123",
+    "name": "dev",
+    "status": "healthy",
+    "url": "https://dev.my-api.rxt.cloud",
+    "lastDeployedAt": "2025-10-21T13:00:00Z",
+    "cpu": 2,
+    "ram": "4Gi",
+    "storage": "20Gi"
+  },
+  {
+    "id": "env_staging",
+    "projectId": "proj_abc123",
+    "name": "staging",
+    "status": "deploying",
+    "url": "https://staging.my-api.rxt.cloud",
+    "lastDeployedAt": "2025-10-21T14:32:00Z",
+    "cpu": 4,
+    "ram": "8Gi",
+    "storage": "50Gi"
+  },
+  {
+    "id": "env_prod",
+    "projectId": "proj_abc123",
+    "name": "prod",
+    "status": "healthy",
+    "url": "https://api.example.com",
+    "lastDeployedAt": "2025-10-21T10:00:00Z",
+    "cpu": 8,
+    "ram": "16Gi",
+    "storage": "100Gi"
+  }
+]

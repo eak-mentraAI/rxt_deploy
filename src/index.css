@@ -1,0 +1,28 @@
+@import "tailwindcss";
+
+@theme {
+  /* Custom colors */
+  --color-rxt-red-primary: #e01f27;
+  --color-rxt-red-dark: #c91a21;
+  --color-rxt-red-light: #ff4449;
+  --color-rxt-red-50: #fef2f2;
+  --color-rxt-red-100: #fee2e2;
+}
+
+@layer base {
+  body {
+    background: white;
+    color: #0f172a;
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}

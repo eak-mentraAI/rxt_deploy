@@ -1,0 +1,72 @@
+[
+  {
+    "id": "proj_abc123",
+    "name": "my-api",
+    "description": "Production API service",
+    "orgId": "org_xyz789",
+    "repo": "github.com/acme/my-api",
+    "branch": "main",
+    "status": "healthy",
+    "environments": 3,
+    "framework": "Node.js",
+    "createdAt": "2025-10-15T10:00:00Z",
+    "updatedAt": "2025-10-21T14:30:00Z",
+    "isCurrent": true
+  },
+  {
+    "id": "proj_def456",
+    "name": "marketing-site",
+    "description": "Company marketing website",
+    "orgId": "org_xyz789",
+    "repo": "github.com/acme/web-app",
+    "branch": "main",
+    "status": "healthy",
+    "environments": 2,
+    "framework": "Next.js",
+    "createdAt": "2025-09-10T08:00:00Z",
+    "updatedAt": "2025-10-20T16:00:00Z",
+    "isCurrent": false
+  },
+  {
+    "id": "proj_ghi789",
+    "name": "analytics-dashboard",
+    "description": "Internal analytics platform",
+    "orgId": "org_xyz789",
+    "repo": "github.com/acme/analytics",
+    "branch": "main",
+    "status": "deploying",
+    "environments": 2,
+    "framework": "React",
+    "createdAt": "2025-09-01T12:00:00Z",
+    "updatedAt": "2025-10-21T09:45:00Z",
+    "isCurrent": false
+  },
+  {
+    "id": "proj_jkl012",
+    "name": "mobile-backend",
+    "description": "Mobile app backend",
+    "orgId": "org_xyz789",
+    "repo": "github.com/acme/mobile-backend",
+    "branch": "develop",
+    "status": "healthy",
+    "environments": 3,
+    "framework": "FastAPI",
+    "createdAt": "2025-08-01T12:00:00Z",
+    "updatedAt": "2025-10-19T09:15:00Z",
+    "isCurrent": false
+  },
+  {
+    "id": "proj_mno345",
+    "name": "background-worker",
+    "description": "Async job processing service",
+    "orgId": "org_xyz789",
+    "repo": "github.com/acme/worker",
+    "branch": "main",
+    "status": "healthy",
+    "environments": 3,
+    "framework": "Python",
+    "createdAt": "2025-07-15T10:00:00Z",
+    "updatedAt": "2025-10-19T16:20:00Z",
+    "isCurrent": false
+  }
+]

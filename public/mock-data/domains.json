@@ -1,0 +1,32 @@
+[
+  {
+    "id": "domain_1",
+    "domain": "api.example.com",
+    "envId": "env_prod",
+    "envName": "prod",
+    "tlsStatus": "active",
+    "tlsType": "auto",
+    "tlsExpiry": "2026-01-15T00:00:00Z",
+    "dnsStatus": "active"
+  },
+  {
+    "id": "domain_2",
+    "domain": "staging.example.com",
+    "envId": "env_staging",
+    "envName": "staging",
+    "tlsStatus": "active",
+    "tlsType": "auto",
+    "tlsExpiry": "2026-01-20T00:00:00Z",
+    "dnsStatus": "active"
+  },
+  {
+    "id": "domain_3",
+    "domain": "dev.example.com",
+    "envId": "env_dev",
+    "envName": "dev",
+    "tlsStatus": "none",
+    "tlsType": "none",
+    "tlsExpiry": null,
+    "dnsStatus": "pending"
+  }
+]

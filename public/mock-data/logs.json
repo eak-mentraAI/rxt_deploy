@@ -1,0 +1,72 @@
+[
+  {
+    "timestamp": "2025-10-21T14:32:01.123Z",
+    "level": "info",
+    "service": "api",
+    "message": "Server started on port 3000",
+    "metadata": {"port": 3000}
+  },
+  {
+    "timestamp": "2025-10-21T14:32:05.456Z",
+    "level": "info",
+    "service": "api",
+    "message": "Request received GET /health",
+    "metadata": {"ip": "192.0.2.10", "path": "/health", "method": "GET"}
+  },
+  {
+    "timestamp": "2025-10-21T14:32:05.478Z",
+    "level": "debug",
+    "service": "api",
+    "message": "Health check passed",
+    "metadata": {"duration": "22ms"}
+  },
+  {
+    "timestamp": "2025-10-21T14:32:10.234Z",
+    "level": "info",
+    "service": "api",
+    "message": "Request received POST /api/auth/login",
+    "metadata": {"ip": "192.0.2.15", "path": "/api/auth/login", "method": "POST"}
+  },
+  {
+    "timestamp": "2025-10-21T14:32:10.456Z",
+    "level": "debug",
+    "service": "db",
+    "message": "Connecting to database",
+    "metadata": {"host": "db.staging.rxt.cloud"}
+  },
+  {
+    "timestamp": "2025-10-21T14:32:11.123Z",
+    "level": "error",
+    "service": "db",
+    "message": "Connection timeout after 5000ms",
+    "metadata": {"host": "db.staging.rxt.cloud", "timeout": 5000}
+  },
+  {
+    "timestamp": "2025-10-21T14:32:11.150Z",
+    "level": "warn",
+    "service": "api",
+    "message": "Retrying database connection (attempt 1/3)",
+    "metadata": {"attempt": 1, "maxAttempts": 3}
+  },
+  {
+    "timestamp": "2025-10-21T14:32:12.345Z",
+    "level": "info",
+    "service": "db",
+    "message": "Connection established",
+    "metadata": {"host": "db.staging.rxt.cloud", "duration": "1222ms"}
+  },
+  {
+    "timestamp": "2025-10-21T14:32:12.567Z",
+    "level": "info",
+    "service": "api",
+    "message": "User authenticated successfully",
+    "metadata": {"userId": "user_789", "email": "alice@example.com"}
+  },
+  {
+    "timestamp": "2025-10-21T14:32:15.789Z",
+    "level": "info",
+    "service": "api",
+    "message": "Request received GET /api/users/789",
+    "metadata": {"ip": "192.0.2.15", "path": "/api/users/789", "method": "GET"}
+  }
+]
